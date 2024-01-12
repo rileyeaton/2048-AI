@@ -12,15 +12,15 @@ import time
 import os
 import os.path
 import sys
+import json
 
 
-# Current path of all files
-local_path = 'C:\\Users\\riley\\Documents\\Coding-Projects\\2048-AI\\'
-
-# Check if an environment variable exists
-if 'LOCAL_PATH' in os.environ:
-    local_path = os.environ['LOCAL_PATH']
-else:
+with open('env.json') as f:
+    env = json.load(f)
+# Check if the local path environment variable exists
+try:
+    local_path = env.get('local_path')
+except:
     sys.exit('Please provide a local path to this folder in env.py')
 
 page_2048 = 'https://play2048.co/'
