@@ -6,6 +6,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoAlertPresentException
+from selenium.common.exceptions import NoSuchElementException
 
 from bs4 import BeautifulSoup
 import time
@@ -46,7 +47,106 @@ time.sleep(5)
 driver.execute_script("document.body.style.overflow='hidden';")
 
 
-def pick_random_directon():
+# Return a simulated possible next random tile placement
+# Takes the 2D list representing tile arrangement as input
+def simulate_random_tile(tile_list):
+    empty_tiles = []
+
+    # Go through tile list and create an array of all those that are empty
+    for row_index, row in enumerate(tile_list):
+        for tile_index, tile in enumerate(row):
+            if tile == 0: 
+                empty_tiles.append([row_index,tile_index])
+    
+    # Get a random empty space to add the new time to
+    random_tile_num = random.randint(0, len(empty_tiles)-1)
+    random_tile = empty_tiles[random_tile_num]
+
+    # Get the new tile value (90% are 2, 10% are 4)
+    random_decimal = random.random()
+    if random_decimal <= 0.9: new_tile_value = 2
+    else: new_tile_value = 4
+
+    # Set the tile and return the list
+    tile_list[random_tile[0]][random_tile[1]] = new_tile_value
+    return tile_list
+
+
+# Helper function to merge tiles in a given row
+def merge_row(row):
+    merged_row = []
+    prev_tile = None
+    merge_count = 0
+
+    for tile in row:
+        if tile == 0:
+            continue
+
+        if prev_tile is None:
+            prev_tile = tile
+        elif prev_tile == tile:
+            merged_row.append(prev_tile * 2)
+            prev_tile = None
+            merge_count += 1
+        else:
+            merged_row.append(prev_tile)
+            prev_tile = tile
+
+    if prev_tile is not None:
+        merged_row.append(prev_tile)
+
+    while len(merged_row) < 4:
+        merged_row.append(0)
+
+    return merged_row
+
+
+# Simulate what will happen to the grid if the UP arrow is pressed
+# Takes the 2D list representing tile grid as input
+def simulate_up_movement(tile_list):
+    # Transpose the grid to simplify the logic (temporarily)
+    tile_list = [[tile_list[j][i] for j in range(4)] for i in range(4)]
+    # Apply the merge function to each row
+    updated_tile_list = [merge_row(row) for row in tile_list]
+    # Transpose the grid back to its original orientation
+    updated_tile_list = [[updated_tile_list[j][i] for j in range(4)] for i in range(4)]
+    return updated_tile_list
+
+
+# Simulate what will happen to the grid if the LEFT arrow is pressed
+# Takes the 2D list representing tile grid as input
+def simulate_left_movement(tile_list):
+    # Apply the merge function to each row directly for left movement
+    updated_tile_list = [merge_row(row) for row in tile_list]
+    return updated_tile_list
+
+
+# Simulate what will happen to the grid if the RIGHT arrow is pressed
+# Takes the 2D list representing tile grid as input
+def simulate_right_movement(tile_list):
+    # Reverse each row, simulate left movement, and reverse again to get right movement
+    reversed_tile_list = [row[::-1] for row in tile_list]
+    updated_tile_list = simulate_left_movement(reversed_tile_list)
+    updated_tile_list = [row[::-1] for row in updated_tile_list]
+    return updated_tile_list
+
+
+# Simulate what will happen to the grid if the DOWN arrow is pressed
+# Takes the 2D list representing tile grid as input
+def simulate_down_movement(tile_list):
+    # Transpose and reverse the grid to simplify the logic
+    tile_list = [[tile_list[j][i] for j in range(4)] for i in range(4)]
+    tile_list = [row[::-1] for row in tile_list]
+    # Apply the merge function to each row
+    updated_tile_list = [merge_row(row) for row in tile_list]
+    # Reverse and transpose the grid back to its original orientation
+    updated_tile_list = [row[::-1] for row in updated_tile_list]
+    updated_tile_list = [[updated_tile_list[j][i] for j in range(4)] for i in range(4)]
+    return updated_tile_list
+
+
+# Return a random direction to move
+def pick_random_direction():
     random_num = random.randint(1, 4) 
     if random_num == 1: return Keys.ARROW_UP
     elif random_num == 2: return Keys.ARROW_RIGHT
@@ -58,16 +158,19 @@ def pick_random_directon():
 def remove_elements(element_removal_array):
     for element_info in element_removal_array:
         element_type, element_value = element_info 
-        if element_type == "class":
-            toRemove = driver.find_element(By.CLASS_NAME, value=element_value)
-        elif element_type == "xpath":
-            toRemove = driver.find_element(By.XPATH, value=element_value)
-        elif element_type == "id":
-            toRemove = driver.find_element(By.ID, value=element_value)
-        driver.execute_script("arguments[0].remove();", toRemove)
+        try:
+            if element_type == "class":
+                toRemove = driver.find_element(By.CLASS_NAME, value=element_value)
+            elif element_type == "xpath":
+                toRemove = driver.find_element(By.XPATH, value=element_value)
+            elif element_type == "id":
+                toRemove = driver.find_element(By.ID, value=element_value)
+            driver.execute_script("arguments[0].remove();", toRemove)
+        except NoSuchElementException:
+            pass
 
 
-# To get the current maximum block size that has been merged/acheived
+# To get the current maximum block size that has been merged/achieved
 # Requires the html inside the element with class "tile-container"
 def get_max_size(html):
     # Parse the HTML using BeautifulSoup
@@ -122,6 +225,7 @@ def parse_tiles(html):
 
     return grid
 
+
 # Main game loop function
 def game_loop():
     # Restart game
@@ -155,17 +259,22 @@ def game_loop():
         for row in updated_grid:
             print(row)
 
-        # Print the highest current block size reached
-        print(get_max_size(tileHtml))
+        print("--")
+        updated_grid = simulate_down_movement(updated_grid)
+        updated_grid = simulate_random_tile(updated_grid)
+        for row in updated_grid:
+            print(row)
 
+        print("------")
         # Main movements
         time.sleep(overall_delay)
-        game_container.send_keys(pick_random_directon())
+        game_container.send_keys(pick_random_direction())
 
     time.sleep(3)
     game_loop()
 
-# Remove unecessary elements (ads and the like)
+
+# Remove unnecessary elements (ads and the like)
 element_removal_array = [
     ["class", "game-explanation-container"],
     ["xpath", "/html/body/div[1]/p[1]"],
@@ -183,7 +292,6 @@ element_removal_array = [
     ["xpath", "/html/body/div[1]/hr[1]"],
     ["xpath", "/html/body/div[1]/span[1]"]
 ]
-
 remove_elements(element_removal_array)
 
 game_loop()
