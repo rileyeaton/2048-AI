@@ -25,7 +25,7 @@ except:
     sys.exit('Please provide a local path to this folder in env.py')
 
 page_2048 = 'https://play2048.co/'
-overall_delay=0.1
+overall_delay=0.0
 
 # create firefox driver
 try:
@@ -47,6 +47,56 @@ time.sleep(5)
 driver.execute_script("document.body.style.overflow='hidden';")
 
 
+# Function to calculate the score of a given grid
+# Takes the 2D list representing tile arrangement as input
+def calculate_grid_score(tile_list):
+    """
+    Calculate the score of a given 2D list representing the 2048 game grid.
+    The score is based on several strategic elements:
+    - Tile values and their positions.
+    - Highest tile value, especially if located in a corner.
+    - Number of empty tiles for maneuverability.
+    - Potential merges (additional complexity).
+    """
+    score = 0
+    highest_tile = 0
+    empty_tiles = 0
+    size = len(tile_list)
+
+    # Check if the highest tile is in a corner
+    corners = [tile_list[0][0], tile_list[0][-1], tile_list[-1][0], tile_list[-1][-1]]
+
+    for i, row in enumerate(tile_list):
+        for j, tile in enumerate(row):
+            if tile > 0:
+                # Increase score by tile value
+                score += tile
+
+                # Update highest tile value
+                if tile > highest_tile:
+                    highest_tile = tile
+
+                # Check for potential merges with adjacent tiles (vertically and horizontally)
+                if i < size - 1 and tile == tile_list[i+1][j]:  # Check vertically
+                    score += tile * 5
+                if j < size - 1 and tile == tile_list[i][j+1]:  # Check horizontally
+                    score += tile * 5
+            else:
+                # Count empty tiles
+                empty_tiles += 1
+
+    # Add bonus for highest tile being in a corner
+    if highest_tile in corners:
+        score += highest_tile * 20
+
+    # Increase score for highest tile and empty tiles
+    score += highest_tile * 10
+    score += empty_tiles * 50
+
+    return score
+
+
+
 # Return a simulated possible next random tile placement
 # Takes the 2D list representing tile arrangement as input
 def simulate_random_tile(tile_list):
@@ -58,6 +108,8 @@ def simulate_random_tile(tile_list):
             if tile == 0: 
                 empty_tiles.append([row_index,tile_index])
     
+    if empty_tiles == []: return tile_list
+
     # Get a random empty space to add the new time to
     random_tile_num = random.randint(0, len(empty_tiles)-1)
     random_tile = empty_tiles[random_tile_num]
@@ -143,6 +195,21 @@ def simulate_down_movement(tile_list):
     updated_tile_list = [row[::-1] for row in updated_tile_list]
     updated_tile_list = [[updated_tile_list[j][i] for j in range(4)] for i in range(4)]
     return updated_tile_list
+
+
+# Return a direction to move based on array of directions
+def select_direction(directions_arr):
+    # Sort the array
+    directions_arr.sort(reverse=True)
+    # Place the first element (highest score) in the best array and pop it off the original arr
+    best_directions = [directions_arr[0][1]]
+    directions_arr.pop(0)
+    # Add any other equivalent scores to the best array (add the direction)
+    for direction in directions_arr:
+        if (direction[0] == directions_arr[0][0]): best_directions.append(direction[1])
+    # Select a random direction from the best array
+    random_num = random.randint(0, len(best_directions) - 1) 
+    return best_directions[random_num]
 
 
 # Return a random direction to move
@@ -250,26 +317,56 @@ def game_loop():
             playing_game = False
 
         tile_container = driver.find_element(By.CLASS_NAME, value="tile-container")
-        tileHtml = tile_container.get_attribute("innerHTML")
+        tile_html = tile_container.get_attribute("innerHTML")
 
         # Parse the HTML and get the updated grid
-        updated_grid = parse_tiles(tileHtml)
-    
-        # Print the updated grid
-        for row in updated_grid:
-            print(row)
+        updated_grid = parse_tiles(tile_html)
 
-        print("--")
-        updated_grid = simulate_down_movement(updated_grid)
-        updated_grid = simulate_random_tile(updated_grid)
-        for row in updated_grid:
-            print(row)
+        sim_arr = []
 
-        print("------")
+        # Simulate pressing the down arrow
+        down_sim_grid = simulate_down_movement(updated_grid)
+        if (down_sim_grid != updated_grid):
+            # down_sim_grid = simulate_random_tile(down_sim_grid)
+            down_sim_score = calculate_grid_score(down_sim_grid)
+            sim_arr.append([down_sim_score, Keys.ARROW_DOWN])
+
+        # Simulate pressing the up arrow
+        up_sim_grid = simulate_up_movement(updated_grid)
+        if (up_sim_grid != updated_grid):
+            # up_sim_grid = simulate_random_tile(up_sim_grid)
+            up_sim_score = calculate_grid_score(up_sim_grid)
+            sim_arr.append([up_sim_score, Keys.ARROW_UP])
+
+        # Simulate pressing the left arrow
+        left_sim_grid = simulate_left_movement(updated_grid)
+        if (left_sim_grid != updated_grid):
+            # left_sim_grid = simulate_random_tile(left_sim_grid)
+            left_sim_score = calculate_grid_score(left_sim_grid)
+            sim_arr.append([left_sim_score, Keys.ARROW_LEFT])
+
+        # Simulate pressing the right arrow
+        right_sim_grid = simulate_right_movement(updated_grid)
+        if (right_sim_grid != updated_grid):
+            # right_sim_grid = simulate_random_tile(right_sim_grid)
+            right_sim_score = calculate_grid_score(right_sim_grid)
+            sim_arr.append([right_sim_score, Keys.ARROW_RIGHT])
+
+        # Select a direction to move based on the stored simulation values
+        if sim_arr == []: game_container.send_keys(pick_random_direction())
+        else: game_container.send_keys(select_direction(sim_arr))
+
         # Main movements
         time.sleep(overall_delay)
-        game_container.send_keys(pick_random_direction())
 
+    # Get the best tile achieved
+    tile_html = tile_container.get_attribute("innerHTML")
+    max_tile = get_max_size(tile_html)
+    # Get the game score
+    score_container = driver.find_element(By.CLASS_NAME, "score-container")
+    score = score_container.get_attribute("innerText").split('\n')[0]
+    # Print the score, wait, and restart the loop
+    print(f"Game Over - Best tile achieved: {max_tile}, Score: {score}")
     time.sleep(3)
     game_loop()
 
