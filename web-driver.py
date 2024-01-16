@@ -13,7 +13,7 @@ import os
 import os.path
 import sys
 import json
-
+import random
 
 with open('env.json') as f:
     env = json.load(f)
@@ -46,6 +46,14 @@ time.sleep(5)
 driver.execute_script("document.body.style.overflow='hidden';")
 
 
+def pick_random_directon():
+    random_num = random.randint(1, 4) 
+    if random_num == 1: return Keys.ARROW_UP
+    elif random_num == 2: return Keys.ARROW_RIGHT
+    elif random_num == 3: return Keys.ARROW_DOWN
+    else: return Keys.ARROW_LEFT
+
+
 # To remove all elements included in an array by class, xpath, or id
 def remove_elements(element_removal_array):
     for element_info in element_removal_array:
@@ -59,7 +67,25 @@ def remove_elements(element_removal_array):
         driver.execute_script("arguments[0].remove();", toRemove)
 
 
+# To get the current maximum block size that has been merged/acheived
+# Requires the html inside the element with class "tile-container"
+def get_max_size(html):
+    # Parse the HTML using BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Find all tile elements
+    tile_elements = soup.find_all(class_='tile')
+    
+    best_tile = 2
+    for tile_element in tile_elements:
+        tile_value = int(tile_element.find(class_='tile-inner').text)
+        if tile_value > best_tile: best_tile = tile_value
+
+    return best_tile
+
+
 # To parse each current tile on the board and store it in a 2d list
+# Requires the html inside the element with class "tile-container"
 def parse_tiles(html):
     # Initialize a 4x4 grid as a list of lists (e.g., a nested list of 0 values)
     grid = [[0] * 4 for _ in range(4)]
@@ -124,25 +150,22 @@ def game_loop():
 
         # Parse the HTML and get the updated grid
         updated_grid = parse_tiles(tileHtml)
-
+    
         # Print the updated grid
         for row in updated_grid:
             print(row)
 
+        # Print the highest current block size reached
+        print(get_max_size(tileHtml))
+
         # Main movements
         time.sleep(overall_delay)
-        game_container.send_keys(Keys.ARROW_RIGHT)
-        time.sleep(overall_delay)
-        game_container.send_keys(Keys.ARROW_DOWN)
-        time.sleep(overall_delay)
-        game_container.send_keys(Keys.ARROW_LEFT)
-        time.sleep(overall_delay)
-        game_container.send_keys(Keys.ARROW_UP)
+        game_container.send_keys(pick_random_directon())
 
     time.sleep(3)
     game_loop()
 
-# Remove unecessary elements
+# Remove unecessary elements (ads and the like)
 element_removal_array = [
     ["class", "game-explanation-container"],
     ["xpath", "/html/body/div[1]/p[1]"],
@@ -157,7 +180,8 @@ element_removal_array = [
     ["id", "ez-video-outstream-wrap"],
     ["xpath", "/html/body/div[1]/span[1]"],
     ["xpath", "/html/body/div[1]/hr[1]"],
-    ["xpath", "/html/body/div[1]/hr[1]"]
+    ["xpath", "/html/body/div[1]/hr[1]"],
+    ["xpath", "/html/body/div[1]/span[1]"]
 ]
 
 remove_elements(element_removal_array)
